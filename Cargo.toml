@@ -4,3 +4,5 @@ version = "0.1.0"
 authors = ["Florian Lammel <mail@florianlammel.com>"]
 
 [dependencies]
+log = "0.4"
+fern = "0.5"
