@@ -1,0 +1,3 @@
+All files except those in directory "satlib" are from https://github.com/strelec/DPLL-with-Rust/tree/4bc75fcf29a7af6c5c69d07503465dbe1a487101/samples
+
+The files in directory "satlib" are from http://www.cs.ubc.ca/~hoos/SATLIB/benchm.html
