@@ -4,7 +4,7 @@ use std::rc::Rc;
 use clause::Clause;
 use literal::Literal;
 
-pub type VariableName = u64;
+pub type VariableName = usize;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum VariableState {

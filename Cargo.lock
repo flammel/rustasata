@@ -25,9 +25,16 @@ version = "0.1.0"
 dependencies = [
  "fern 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "vec_map 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "vec_map"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [metadata]
 "checksum cfg-if 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "0c4e7bb64a8ebb0d856483e1e682ea3422f883c5f5615a90d51a2c82fe87fdd3"
 "checksum fern 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)" = "57915fe00a83af935983eb2d00b0ecc62419c4741b28c207ecbf98fd4a1b94c8"
 "checksum log 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "cba860f648db8e6f269df990180c2217f333472b4a6e901e97446858487971e2"
+"checksum vec_map 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "05c78687fb1a80548ae3250346c3db86a80a7cdd77bda190189f2d0a0987c81a"

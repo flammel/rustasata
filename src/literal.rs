@@ -21,7 +21,7 @@ impl Not for Literal {
 
 impl Literal {
     pub fn new(num: &i64) -> Literal {
-        Literal(num.abs() as u64, *num >= 0)
+        Literal(num.abs() as usize, *num >= 0)
     }
 
     pub fn falsified_by(&self, var_val: VariableState) -> bool {

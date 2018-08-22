@@ -1,11 +1,13 @@
+extern crate vec_map;
+
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::collections::BinaryHeap;
 use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
 use std::time::Instant;
 use std::time::Duration;
+use self::vec_map::VecMap;
 
 use clause::{Clause, WatchedUpdate};
 use literal::Literal;
@@ -13,6 +15,8 @@ use parser::Dimacs;
 use variable::{Variable, VariableName, VariableState};
 
 use self::AssignmentType::*;
+
+pub type Variables = VecMap<Variable>;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum SolverResult {
@@ -39,7 +43,7 @@ impl fmt::Debug for Assignment {
 
 #[derive(Debug)]
 pub struct Solver {
-    variables: HashMap<VariableName, Variable>,
+    variables: Variables,
     clauses: Vec<Rc<RefCell<Clause>>>,
     assignments: Vec<Assignment>,
     trivially_unsat: bool,
@@ -82,7 +86,7 @@ impl Solver {
     pub fn from_dimacs(mut dimacs: Dimacs) -> Solver {
         let start = Instant::now();
         let mut solver = Solver {
-            variables: BTreeMap::new(),
+            variables: VecMap::new(),
             clauses: Vec::new(),
             assignments: vec![],
             trivially_unsat: false,
@@ -181,7 +185,7 @@ impl Solver {
         self.variables.len() == self.assignments.len()
     }
 
-    fn unassigned_var(&mut self) -> Option<u64> {
+    fn unassigned_var(&mut self) -> Option<VariableName> {
         let start = Instant::now();
         let result = self.variables
             .values()
@@ -294,7 +298,7 @@ impl Solver {
 
         let variable = self
             .variables
-            .get_mut(&literal.0)
+            .get_mut(literal.0)
             .expect("Variable not found for assignment");
 
         if variable.state == VariableState::Open {
@@ -310,12 +314,12 @@ impl Solver {
     }
 
     fn get_var(&self, literal: Literal) -> &Variable {
-        self.variables.get(&literal.0).expect("Variable not found")
+        self.variables.get(literal.0).expect("Variable not found")
     }
 
     fn get_var_mut(&mut self, literal: Literal) -> &mut Variable {
         self.variables
-            .get_mut(&literal.0)
+            .get_mut(literal.0)
             .expect("Variable not found for mut")
     }
 }
