@@ -10,6 +10,7 @@
 * [http://www.cs.ubc.ca/~hoos/SATLIB/benchm.html](http://www.cs.ubc.ca/~hoos/SATLIB/benchm.html)
 * [https://toughsat.appspot.com/](https://toughsat.appspot.com/)
 * [https://www.cs.cmu.edu/afs/cs/project/jair/pub/volume21/dixon04a-html/node3.html](https://www.cs.cmu.edu/afs/cs/project/jair/pub/volume21/dixon04a-html/node3.html)
+* [http://fmv.jku.at/biere/talks/Biere-VTSA12-talk.pdf](http://fmv.jku.at/biere/talks/Biere-VTSA12-talk.pdf)
 
 
 From [https://baldur.iti.kit.edu/sat/files/l07.pdf](https://baldur.iti.kit.edu/sat/files/l07.pdf)
