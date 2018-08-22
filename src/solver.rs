@@ -223,14 +223,14 @@ impl Solver {
             debug!("Trivially unsat");
             return SolverResult::Unsat;
         }
-        if let SolverResult::Unsat = self.unit_propagate() {
+        if !self.unit_propagate() {
             debug!("Unsat by initial bcp");
             return SolverResult::Unsat;
         }
         debug!("Start loop");
         while !self.done() {
             debug!("Not done");
-            if let SolverResult::Unsat = self.unit_propagate() {
+            if !self.unit_propagate() {
                 debug!("BCP caused conflict");
                 if !self.backtrack() {
                     return SolverResult::Unsat;
@@ -302,7 +302,7 @@ impl Solver {
     // Unit Propagation
     //
 
-    fn unit_propagate(&mut self) -> SolverResult {
+    fn unit_propagate(&mut self) -> bool {
         trace!("\n\nBCP\n");
         while let Some(propagate) = self.bcp_queue.pop_front() {
             self.stats.propagations += 1;
@@ -317,11 +317,11 @@ impl Solver {
                 match update_result {
                     WatchedUpdate::AlreadySat => {}
                     WatchedUpdate::AlreadyOk => {}
-                    WatchedUpdate::Unsat => return SolverResult::Unsat,
+                    WatchedUpdate::Unsat => return false,
                     WatchedUpdate::NowUnit(literal) => {
                         if self.store_assignment(literal, Consequence).is_err() {
                             trace!("Contradiction from unit clause");
-                            return SolverResult::Unsat;
+                            return false;
                         }
                     }
                     WatchedUpdate::NewWatched(literal) => {
@@ -332,7 +332,7 @@ impl Solver {
                 }
             }
         }
-        return SolverResult::Sat;
+        return true;
     }
 
     fn clauses_to_update(&self, propagated: Literal) -> Vec<Rc<RefCell<Clause>>> {
