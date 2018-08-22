@@ -10,7 +10,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use self::priority_queue::PriorityQueue;
-use self::vec_map::{VecMap, Entry, Values};
+use self::vec_map::{Entry, Values, VecMap};
 
 use clause::{Clause, WatchedUpdate};
 use literal::Literal;
@@ -69,7 +69,9 @@ pub struct Variables {
 
 impl Variables {
     fn new() -> Variables {
-        Variables { variables: VecMap::new() }
+        Variables {
+            variables: VecMap::new(),
+        }
     }
 
     fn entry(&mut self, key: usize) -> Entry<Variable> {
@@ -85,11 +87,15 @@ impl Variables {
     }
 
     pub fn get(&self, literal: Literal) -> &Variable {
-        self.variables.get(literal.0).expect("Could not get variable")
+        self.variables
+            .get(literal.0)
+            .expect("Could not get variable")
     }
 
     fn get_mut(&mut self, literal: Literal) -> &mut Variable {
-        self.variables.get_mut(literal.0).expect("Could not get_mut variable")
+        self.variables
+            .get_mut(literal.0)
+            .expect("Could not get_mut variable")
     }
 }
 
@@ -252,8 +258,7 @@ impl Solver {
     }
 
     fn unassigned_var(&mut self) -> Option<VariableName> {
-        self
-            .variable_queue
+        self.variable_queue
             .peek()
             .and_then(|(i, VariablePriority(_, isset))| if *isset { None } else { Some(*i) })
     }
