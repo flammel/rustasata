@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::BinaryHeap;
 use std::collections::VecDeque;
 use std::fmt;
@@ -41,7 +40,7 @@ impl fmt::Debug for Assignment {
 #[derive(Debug)]
 pub struct Solver {
     variables: BTreeMap<VariableName, Variable>,
-    clauses: BTreeSet<Rc<RefCell<Clause>>>,
+    clauses: Vec<Rc<RefCell<Clause>>>,
     assignments: Vec<Assignment>,
     trivially_unsat: bool,
     bcp_queue: VecDeque<Literal>,
@@ -84,7 +83,7 @@ impl Solver {
         let start = Instant::now();
         let mut solver = Solver {
             variables: BTreeMap::new(),
-            clauses: BTreeSet::new(),
+            clauses: Vec::new(),
             assignments: vec![],
             trivially_unsat: false,
             bcp_queue: VecDeque::new(),
@@ -109,11 +108,10 @@ impl Solver {
         let clause = Rc::new(RefCell::new(Clause::new(&mut literals)));
         self.add_clause_variables(&clause);
         self.check_initial_unit(&clause);
-        self.clauses.insert(clause);
+        self.clauses.push(clause);
     }
 
     fn add_clause_variables(&mut self, clauseref: &Rc<RefCell<Clause>>) {
-
         let clause = clauseref.borrow();
         for (idx, literal) in clause.literals.iter().enumerate() {
             self.stats.literals += 1;

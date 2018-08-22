@@ -15,7 +15,7 @@ pub enum WatchedUpdate {
     Unsat,
 }
 
-#[derive(Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Eq, PartialEq)]
 pub struct Clause {
     pub watched: (usize, usize),
     pub literals: Vec<Literal>,
