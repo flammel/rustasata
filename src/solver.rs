@@ -10,7 +10,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use self::priority_queue::PriorityQueue;
-use self::vec_map::VecMap;
+use self::vec_map::{VecMap, Entry, Values};
 
 use clause::{Clause, WatchedUpdate};
 use literal::Literal;
@@ -18,8 +18,6 @@ use parser::Dimacs;
 use variable::{Variable, VariableName, VariableState};
 
 use self::AssignmentType::*;
-
-pub type Variables = VecMap<Variable>;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum SolverResult {
@@ -62,6 +60,37 @@ impl Ord for VariablePriority {
         } else {
             self.0.cmp(&other.0)
         }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Variables {
+    variables: VecMap<Variable>
+}
+
+impl Variables {
+    fn new() -> Variables {
+        Variables { variables: VecMap::new() }
+    }
+
+    fn entry(&mut self, key: usize) -> Entry<Variable> {
+        self.variables.entry(key)
+    }
+
+    fn values(&self) -> Values<Variable> {
+        self.variables.values()
+    }
+
+    fn len(&self) -> usize {
+        self.variables.len()
+    }
+
+    pub fn get(&self, literal: Literal) -> &Variable {
+        self.variables.get(literal.0).expect("Could not get variable")
+    }
+
+    fn get_mut(&mut self, literal: Literal) -> &mut Variable {
+        self.variables.get_mut(literal.0).expect("Could not get_mut variable")
     }
 }
 
@@ -109,7 +138,7 @@ impl Solver {
     pub fn from_dimacs(mut dimacs: Dimacs) -> Solver {
         let start = Instant::now();
         let mut solver = Solver {
-            variables: VecMap::new(),
+            variables: Variables::new(),
             clauses: Vec::new(),
             assignments: vec![],
             trivially_unsat: false,
@@ -266,7 +295,7 @@ impl Solver {
     fn unset(&mut self, to_unset: Literal) {
         self.variable_queue
             .change_priority_by(&to_unset.0, |prio| VariablePriority(prio.0, false));
-        self.get_var_mut(to_unset).state = VariableState::Open;
+        self.variables.get_mut(to_unset).state = VariableState::Open;
     }
 
     //
@@ -296,7 +325,7 @@ impl Solver {
                         }
                     }
                     WatchedUpdate::NewWatched(literal) => {
-                        let variable = self.get_var_mut(literal);
+                        let variable = self.variables.get_mut(literal);
                         variable.unwatch(literal.1, &clause);
                         variable.watch(literal.1, clause.clone());
                     }
@@ -307,7 +336,7 @@ impl Solver {
     }
 
     fn clauses_to_update(&self, propagated: Literal) -> Vec<Rc<RefCell<Clause>>> {
-        let variable = self.get_var(propagated);
+        let variable = self.variables.get(propagated);
         if propagated.1 {
             variable.watched_neg.clone()
         } else {
@@ -329,10 +358,7 @@ impl Solver {
             VariableState::False
         };
 
-        let variable = self
-            .variables
-            .get_mut(literal.0)
-            .expect("Variable not found for assignment");
+        let variable = self.variables.get_mut(literal);
 
         if variable.state == VariableState::Open {
             variable.state = new_state;
@@ -346,15 +372,5 @@ impl Solver {
         } else {
             Err(())
         }
-    }
-
-    fn get_var(&self, literal: Literal) -> &Variable {
-        self.variables.get(literal.0).expect("Variable not found")
-    }
-
-    fn get_var_mut(&mut self, literal: Literal) -> &mut Variable {
-        self.variables
-            .get_mut(literal.0)
-            .expect("Variable not found for mut")
     }
 }

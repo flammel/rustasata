@@ -53,8 +53,8 @@ impl Clause {
         }
 
         let snd_lit = self.literals[self.watched.1];
-        let fst_val = variables.get(fst_lit.0).unwrap().state;
-        let snd_val = variables.get(snd_lit.0).unwrap().state;
+        let fst_val = variables.get(fst_lit).state;
+        let snd_val = variables.get(snd_lit).state;
 
         if fst_lit.satisfied_by(fst_val) || snd_lit.satisfied_by(snd_val) {
             return AlreadySat;
@@ -92,14 +92,8 @@ impl Clause {
             if self.watched.0 == idx || self.watched.1 == idx {
                 continue;
             }
-            if !literal.falsified_by(variables.get(literal.0).unwrap().state) {
+            if !literal.falsified_by(variables.get(*literal).state) {
                 return Some((idx, *literal));
-            } else {
-                debug!(
-                    "{:?} is falsified by {:?}",
-                    literal,
-                    variables.get(literal.0).unwrap().state
-                );
             }
         }
         None
