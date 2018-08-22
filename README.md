@@ -11,7 +11,8 @@
 * [https://toughsat.appspot.com/](https://toughsat.appspot.com/)
 * [https://www.cs.cmu.edu/afs/cs/project/jair/pub/volume21/dixon04a-html/node3.html](https://www.cs.cmu.edu/afs/cs/project/jair/pub/volume21/dixon04a-html/node3.html)
 * [http://fmv.jku.at/biere/talks/Biere-VTSA12-talk.pdf](http://fmv.jku.at/biere/talks/Biere-VTSA12-talk.pdf)
-
+* [http://ssa-school-2016.it.uu.se/wp-content/uploads/2016/06/LaurentSimon.pdf](http://ssa-school-2016.it.uu.se/wp-content/uploads/2016/06/LaurentSimon.pdf)
+* [http://satassociation.org/articles/FAIA185-0131.pdf](http://satassociation.org/articles/FAIA185-0131.pdf)
 
 From [https://baldur.iti.kit.edu/sat/files/l07.pdf](https://baldur.iti.kit.edu/sat/files/l07.pdf)
 
