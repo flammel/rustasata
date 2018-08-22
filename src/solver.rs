@@ -5,6 +5,8 @@ use std::collections::BinaryHeap;
 use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
+use std::time::Instant;
+use std::time::Duration;
 
 use clause::{Clause, WatchedUpdate};
 use literal::Literal;
@@ -36,13 +38,41 @@ impl fmt::Debug for Assignment {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct Solver {
     variables: BTreeMap<VariableName, Variable>,
     clauses: BTreeSet<Rc<RefCell<Clause>>>,
     assignments: Vec<Assignment>,
     trivially_unsat: bool,
     bcp_queue: VecDeque<Literal>,
+    stats: SolverStats,
+}
+
+#[derive(Debug)]
+struct SolverStats {
+    clauses: u64,
+    literals: u64,
+    decisions: u64,
+    propagations: u64,
+    get_literal_time: Duration,
+    init_time: Duration,
+    solve_time: Duration,
+    misc_time: Duration,
+}
+
+impl SolverStats {
+    fn new() -> SolverStats {
+        SolverStats {
+            clauses: 0,
+            literals: 0,
+            decisions: 0,
+            propagations: 0,
+            get_literal_time: Duration::new(0, 0),
+            init_time: Duration::new(0, 0),
+            solve_time: Duration::new(0, 0),
+            misc_time: Duration::new(0, 0),
+        }
+    }
 }
 
 impl Solver {
@@ -51,20 +81,24 @@ impl Solver {
     //
 
     pub fn from_dimacs(mut dimacs: Dimacs) -> Solver {
+        let start = Instant::now();
         let mut solver = Solver {
             variables: BTreeMap::new(),
             clauses: BTreeSet::new(),
             assignments: vec![],
             trivially_unsat: false,
             bcp_queue: VecDeque::new(),
+            stats: SolverStats::new(),
         };
         for mut literals in dimacs.clauses.iter_mut() {
             solver.add_clause(&mut literals);
         }
+        solver.stats.init_time += start.elapsed();
         solver
     }
 
     fn add_clause(&mut self, mut literals: &mut Vec<i64>) {
+        self.stats.clauses += 1;
         if self.trivially_unsat {
             return;
         }
@@ -79,8 +113,10 @@ impl Solver {
     }
 
     fn add_clause_variables(&mut self, clauseref: &Rc<RefCell<Clause>>) {
+
         let clause = clauseref.borrow();
         for (idx, literal) in clause.literals.iter().enumerate() {
+            self.stats.literals += 1;
             let variable = self
                 .variables
                 .entry(literal.0)
@@ -106,6 +142,14 @@ impl Solver {
     //
 
     pub fn solve(&mut self) -> SolverResult {
+        let start = Instant::now();
+        let result = self.internal_solve();
+        self.stats.solve_time += start.elapsed();
+        println!("{:?}", self.stats);
+        result
+    }
+
+    fn internal_solve(&mut self) -> SolverResult {
         if self.trivially_unsat {
             debug!("Trivially unsat");
             return SolverResult::Unsat;
@@ -125,6 +169,7 @@ impl Solver {
             } else {
                 debug!("BCP yielded sat");
                 if let Some(var_name) = self.unassigned_var() {
+                    self.stats.decisions += 1;
                     self.store_assignment(Literal(var_name, true), Decision)
                         .expect("Storing new decision lead to conflict");
                 }
@@ -138,14 +183,18 @@ impl Solver {
         self.variables.len() == self.assignments.len()
     }
 
-    fn unassigned_var(&self) -> Option<u64> {
-        self.variables
+    fn unassigned_var(&mut self) -> Option<u64> {
+        let start = Instant::now();
+        let result = self.variables
             .values()
             .filter(|v| v.state == VariableState::Open)
             .map(|v| (v.occurences, v.name))
             .collect::<BinaryHeap<(u64, VariableName)>>()
             .peek()
-            .map(|x| x.1)
+            .map(|x| x.1);
+
+        self.stats.get_literal_time += start.elapsed();
+        result
     }
 
     //
@@ -192,6 +241,7 @@ impl Solver {
     fn unit_propagate(&mut self) -> SolverResult {
         trace!("\n\nBCP\n");
         while let Some(propagate) = self.bcp_queue.pop_front() {
+            self.stats.propagations += 1;
             for clause in self.clauses_to_update(propagate) {
                 let update_result = clause.borrow_mut().update_watched(&self.variables);
                 trace!(
