@@ -45,10 +45,7 @@ impl Clause {
         }
     }
 
-    pub fn update_watched(
-        &mut self,
-        variables: &Variables,
-    ) -> WatchedUpdate {
+    pub fn update_watched(&mut self, variables: &Variables) -> WatchedUpdate {
         let fst_lit = self.literals[self.watched.0];
 
         if self.watched.0 == self.watched.1 {
@@ -90,10 +87,7 @@ impl Clause {
         }
     }
 
-    fn next_unwatched(
-        &self,
-        variables: &Variables,
-    ) -> Option<(usize, Literal)> {
+    fn next_unwatched(&self, variables: &Variables) -> Option<(usize, Literal)> {
         for (idx, literal) in self.literals.iter().enumerate() {
             if self.watched.0 == idx || self.watched.1 == idx {
                 continue;

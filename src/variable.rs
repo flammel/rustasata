@@ -19,7 +19,7 @@ pub struct Variable {
     pub state: VariableState,
     pub watched_pos: Vec<Rc<RefCell<Clause>>>,
     pub watched_neg: Vec<Rc<RefCell<Clause>>>,
-    pub occurences: u64,
+    pub occurences: usize,
 }
 
 impl Variable {

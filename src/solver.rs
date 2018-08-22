@@ -1,12 +1,15 @@
+extern crate priority_queue;
 extern crate vec_map;
 
 use std::cell::RefCell;
-use std::collections::BinaryHeap;
+use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
-use std::time::Instant;
 use std::time::Duration;
+use std::time::Instant;
+
+use self::priority_queue::PriorityQueue;
 use self::vec_map::VecMap;
 
 use clause::{Clause, WatchedUpdate};
@@ -41,6 +44,27 @@ impl fmt::Debug for Assignment {
     }
 }
 
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+struct VariablePriority(usize, bool);
+
+impl PartialOrd for VariablePriority {
+    fn partial_cmp(&self, other: &VariablePriority) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for VariablePriority {
+    fn cmp(&self, other: &VariablePriority) -> Ordering {
+        if self.1 && !other.1 {
+            Ordering::Less
+        } else if !self.1 && other.1 {
+            Ordering::Greater
+        } else {
+            self.0.cmp(&other.0)
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Solver {
     variables: Variables,
@@ -49,6 +73,7 @@ pub struct Solver {
     trivially_unsat: bool,
     bcp_queue: VecDeque<Literal>,
     stats: SolverStats,
+    variable_queue: PriorityQueue<VariableName, VariablePriority>,
 }
 
 #[derive(Debug)]
@@ -57,7 +82,6 @@ struct SolverStats {
     literals: u64,
     decisions: u64,
     propagations: u64,
-    get_literal_time: Duration,
     init_time: Duration,
     solve_time: Duration,
     misc_time: Duration,
@@ -70,7 +94,6 @@ impl SolverStats {
             literals: 0,
             decisions: 0,
             propagations: 0,
-            get_literal_time: Duration::new(0, 0),
             init_time: Duration::new(0, 0),
             solve_time: Duration::new(0, 0),
             misc_time: Duration::new(0, 0),
@@ -92,10 +115,12 @@ impl Solver {
             trivially_unsat: false,
             bcp_queue: VecDeque::new(),
             stats: SolverStats::new(),
+            variable_queue: PriorityQueue::new(),
         };
         for mut literals in dimacs.clauses.iter_mut() {
             solver.add_clause(&mut literals);
         }
+        solver.build_variable_queue();
         solver.stats.init_time += start.elapsed();
         solver
     }
@@ -137,6 +162,19 @@ impl Solver {
                 self.trivially_unsat = true;
             }
         }
+    }
+
+    fn build_variable_queue(&mut self) {
+        self.variable_queue = self
+            .variables
+            .values()
+            .map(|var| {
+                (
+                    var.name,
+                    VariablePriority(var.occurences, var.state != VariableState::Open),
+                )
+            })
+            .collect();
     }
 
     //
@@ -186,17 +224,10 @@ impl Solver {
     }
 
     fn unassigned_var(&mut self) -> Option<VariableName> {
-        let start = Instant::now();
-        let result = self.variables
-            .values()
-            .filter(|v| v.state == VariableState::Open)
-            .map(|v| (v.occurences, v.name))
-            .collect::<BinaryHeap<(u64, VariableName)>>()
+        self
+            .variable_queue
             .peek()
-            .map(|x| x.1);
-
-        self.stats.get_literal_time += start.elapsed();
-        result
+            .and_then(|(i, VariablePriority(_, isset))| if *isset { None } else { Some(*i) })
     }
 
     //
@@ -233,6 +264,8 @@ impl Solver {
     }
 
     fn unset(&mut self, to_unset: Literal) {
+        self.variable_queue
+            .change_priority_by(&to_unset.0, |prio| VariablePriority(prio.0, false));
         self.get_var_mut(to_unset).state = VariableState::Open;
     }
 
@@ -303,6 +336,8 @@ impl Solver {
 
         if variable.state == VariableState::Open {
             variable.state = new_state;
+            self.variable_queue
+                .change_priority_by(&literal.0, |prio| VariablePriority(prio.0, true));
             self.assignments.push(assignment);
             self.bcp_queue.push_back(literal);
             Ok(())
