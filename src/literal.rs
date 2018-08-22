@@ -3,7 +3,7 @@ use std::ops::Not;
 
 use variable::{VariableName, VariableState};
 
-#[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct Literal(pub VariableName, pub bool);
 
 impl fmt::Debug for Literal {

@@ -33,7 +33,6 @@ enum AssignmentType {
     Consequence,
 }
 
-#[derive(Eq, PartialEq)]
 struct Assignment(Literal, AssignmentType);
 
 impl fmt::Debug for Assignment {
@@ -42,7 +41,7 @@ impl fmt::Debug for Assignment {
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 struct VariablePriority(usize, bool);
 
 impl PartialOrd for VariablePriority {
@@ -63,9 +62,9 @@ impl Ord for VariablePriority {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct Variables {
-    variables: VecMap<Variable>
+    variables: VecMap<Variable>,
 }
 
 impl Variables {
