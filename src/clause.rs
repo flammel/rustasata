@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fmt;
 
 use literal::Literal;
@@ -48,7 +48,7 @@ impl Clause {
 
     pub fn update_watched(
         &mut self,
-        variables: &BTreeMap<VariableName, Variable>,
+        variables: &HashMap<VariableName, Variable>,
     ) -> WatchedUpdate {
         let fst_lit = self.literals[self.watched.0];
 
@@ -93,7 +93,7 @@ impl Clause {
 
     fn next_unwatched(
         &self,
-        variables: &BTreeMap<VariableName, Variable>,
+        variables: &HashMap<VariableName, Variable>,
     ) -> Option<(usize, Literal)> {
         for (idx, literal) in self.literals.iter().enumerate() {
             if self.watched.0 == idx || self.watched.1 == idx {

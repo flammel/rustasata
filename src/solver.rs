@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::collections::BinaryHeap;
 use std::collections::VecDeque;
 use std::fmt;
@@ -39,7 +39,7 @@ impl fmt::Debug for Assignment {
 
 #[derive(Debug)]
 pub struct Solver {
-    variables: BTreeMap<VariableName, Variable>,
+    variables: HashMap<VariableName, Variable>,
     clauses: Vec<Rc<RefCell<Clause>>>,
     assignments: Vec<Assignment>,
     trivially_unsat: bool,
