@@ -4,20 +4,18 @@ extern crate vec_map;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::fmt;
 use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
 use self::priority_queue::PriorityQueue;
 use self::vec_map::{Entry, Values, VecMap};
+use self::Assignment::*;
 
 use clause::{Clause, WatchedUpdate};
 use literal::Literal;
 use parser::Dimacs;
 use variable::{Variable, VariableName, VariableState};
-
-use self::AssignmentType::*;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum SolverResult {
@@ -26,18 +24,19 @@ pub enum SolverResult {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum AssignmentType {
-    InitialUnit,
-    Decision,
-    NegatedDecision,
-    Consequence,
+enum Assignment {
+    Decision(Literal),
+    NegatedDecision(Literal),
+    Consequence(Literal),
 }
 
-struct Assignment(Literal, AssignmentType);
-
-impl fmt::Debug for Assignment {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}({:?})", self.1, self.0)
+impl Assignment {
+    fn literal(&self) -> Literal {
+        match self {
+            Decision(literal) => *literal,
+            NegatedDecision(literal) => *literal,
+            Consequence(literal) => *literal,
+        }
     }
 }
 
@@ -82,10 +81,6 @@ impl Variables {
         self.variables.values()
     }
 
-    fn len(&self) -> usize {
-        self.variables.len()
-    }
-
     pub fn get(&self, literal: Literal) -> &Variable {
         self.variables
             .get(literal.0)
@@ -105,7 +100,7 @@ pub struct Solver {
     clauses: Vec<Rc<RefCell<Clause>>>,
     assignments: Vec<Assignment>,
     trivially_unsat: bool,
-    bcp_queue: VecDeque<Literal>,
+    bcp_queue: VecDeque<(Literal, Rc<RefCell<Clause>>)>,
     stats: SolverStats,
     variable_queue: PriorityQueue<VariableName, VariablePriority>,
 }
@@ -134,6 +129,8 @@ impl SolverStats {
         }
     }
 }
+
+struct Conflict(Rc<RefCell<Clause>>, Literal);
 
 impl Solver {
     //
@@ -181,7 +178,7 @@ impl Solver {
             let variable = self
                 .variables
                 .entry(literal.0)
-                .or_insert(Variable::new(literal));
+                .or_insert(Variable::new(literal.0));
             if clause.watched.0 == idx || clause.watched.1 == idx {
                 variable.watch(literal.1, clauseref.clone());
                 variable.occurences = variable.occurences + 1;
@@ -192,9 +189,7 @@ impl Solver {
     fn check_initial_unit(&mut self, clauseref: &Rc<RefCell<Clause>>) {
         let literals = &clauseref.borrow().literals;
         if literals.len() == 1 {
-            if self.store_assignment(literals[0], InitialUnit).is_err() {
-                self.trivially_unsat = true;
-            }
+            self.bcp_queue.push_back((literals[0], clauseref.clone()));
         }
     }
 
@@ -228,33 +223,25 @@ impl Solver {
             debug!("Trivially unsat");
             return SolverResult::Unsat;
         }
-        if !self.unit_propagate() {
+        if self.unit_propagate().is_some() {
             debug!("Unsat by initial bcp");
             return SolverResult::Unsat;
         }
         debug!("Start loop");
-        while !self.done() {
-            debug!("Not done");
-            if !self.unit_propagate() {
+        while let Some(var_name) = self.unassigned_var() {
+            self.stats.decisions += 1;
+            self.store_assignment(Decision(Literal(var_name, true)))
+                .expect("Storing new decision lead to conflict");
+            if let Some(Conflict(_c, _l)) = self.unit_propagate() {
                 debug!("BCP caused conflict");
                 if !self.backtrack() {
                     return SolverResult::Unsat;
                 }
-            } else {
-                debug!("BCP yielded sat");
-                if let Some(var_name) = self.unassigned_var() {
-                    self.stats.decisions += 1;
-                    self.store_assignment(Literal(var_name, true), Decision)
-                        .expect("Storing new decision lead to conflict");
-                }
+                self.bcp_queue.clear();
             }
         }
         debug!("Formula is sat");
         SolverResult::Sat
-    }
-
-    fn done(&self) -> bool {
-        self.variables.len() == self.assignments.len()
     }
 
     fn unassigned_var(&mut self) -> Option<VariableName> {
@@ -264,32 +251,43 @@ impl Solver {
     }
 
     //
+    // Unit Propagation
+    //
+
+    fn unit_propagate(&mut self) -> Option<Conflict> {
+        trace!("BCP");
+        while let Some((literal, clause)) = self.bcp_queue.pop_front() {
+            trace!("Propagate {:?}", literal);
+            self.stats.propagations += 1;
+            if self.store_assignment(Consequence(literal)).is_err() {
+                return Some(Conflict(clause, literal));
+            }
+        }
+        None
+    }
+
+    //
     // Backtracking
     //
 
     fn backtrack(&mut self) -> bool {
         debug!("Backtrack");
-        self.bcp_queue.clear();
         loop {
             match self.assignments.pop() {
                 None => {
                     debug!("Cannot backtrack, no assignments");
                     return false;
                 }
-                Some(Assignment(_, InitialUnit)) => {
-                    debug!("Cannot backtrack, reached initial units");
-                    return false;
-                }
-                Some(Assignment(to_negate, Decision)) => {
+                Some(Decision(to_negate)) => {
                     self.unset(to_negate);
-                    self.store_assignment(!to_negate, NegatedDecision)
+                    self.store_assignment(NegatedDecision(!to_negate))
                         .expect("Negating decision lead to conflict");
                     return true;
                 }
-                Some(Assignment(to_unset, NegatedDecision)) => {
+                Some(NegatedDecision(to_unset)) => {
                     self.unset(to_unset);
                 }
-                Some(Assignment(to_unset, Consequence)) => {
+                Some(Consequence(to_unset)) => {
                     self.unset(to_unset);
                 }
             }
@@ -303,78 +301,44 @@ impl Solver {
     }
 
     //
-    // Unit Propagation
-    //
-
-    fn unit_propagate(&mut self) -> bool {
-        trace!("\n\nBCP\n");
-        while let Some(propagate) = self.bcp_queue.pop_front() {
-            self.stats.propagations += 1;
-            for clause in self.clauses_to_update(propagate) {
-                let update_result = clause.borrow_mut().update_watched(&self.variables);
-                trace!(
-                    "propagate {:?} to {:?} yielded {:?}",
-                    propagate,
-                    clause,
-                    update_result
-                );
-                match update_result {
-                    WatchedUpdate::AlreadySat => {}
-                    WatchedUpdate::AlreadyOk => {}
-                    WatchedUpdate::Unsat => return false,
-                    WatchedUpdate::NowUnit(literal) => {
-                        if self.store_assignment(literal, Consequence).is_err() {
-                            trace!("Contradiction from unit clause");
-                            return false;
-                        }
-                    }
-                    WatchedUpdate::NewWatched(literal) => {
-                        let variable = self.variables.get_mut(literal);
-                        variable.unwatch(literal.1, &clause);
-                        variable.watch(literal.1, clause.clone());
-                    }
-                }
-            }
-        }
-        return true;
-    }
-
-    fn clauses_to_update(&self, propagated: Literal) -> Vec<Rc<RefCell<Clause>>> {
-        let variable = self.variables.get(propagated);
-        if propagated.1 {
-            variable.watched_neg.clone()
-        } else {
-            variable.watched_pos.clone()
-        }
-    }
-
-    //
     // Utilities
     //
 
-    fn store_assignment(&mut self, literal: Literal, a_type: AssignmentType) -> Result<(), ()> {
-        let assignment = Assignment(literal, a_type);
+    fn store_assignment(&mut self, assignment: Assignment) -> Result<(), ()> {
         debug!("Store {:?}", assignment);
 
-        let new_state = if literal.1 {
-            VariableState::True
-        } else {
-            VariableState::False
-        };
+        let literal = assignment.literal();
 
-        let variable = self.variables.get_mut(literal);
-
-        if variable.state == VariableState::Open {
-            variable.state = new_state;
+        let updated = {
+            let variable = self.variables.get_mut(literal);
             self.variable_queue
                 .change_priority_by(&literal.0, |prio| VariablePriority(prio.0, true));
             self.assignments.push(assignment);
-            self.bcp_queue.push_back(literal);
-            Ok(())
-        } else if variable.state == new_state {
-            Ok(())
-        } else {
-            Err(())
+            variable.set(literal.1)
+        };
+
+        match updated {
+            Ok(clauses_to_update) => {
+                for clause in clauses_to_update {
+                    let update_result = clause.borrow_mut().update_watched(&self.variables);
+                    match update_result {
+                        WatchedUpdate::AlreadySat => {}
+                        WatchedUpdate::AlreadyOk => {}
+                        WatchedUpdate::Unsat => return Err(()),
+                        WatchedUpdate::NowUnit(unit) => {
+                            trace!("literal {:?} is now unit in {:?}", unit, clause.borrow());
+                            self.bcp_queue.push_back((unit, clause.clone()));
+                        }
+                        WatchedUpdate::NewWatched(watched) => {
+                            let variable = self.variables.get_mut(watched);
+                            variable.unwatch(watched.1, &clause);
+                            variable.watch(watched.1, clause.clone());
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Err(_) => Err(()),
         }
     }
 }

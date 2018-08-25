@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use clause::Clause;
-use literal::Literal;
 
 pub type VariableName = usize;
 
@@ -20,16 +19,35 @@ pub struct Variable {
     pub watched_pos: Vec<Rc<RefCell<Clause>>>,
     pub watched_neg: Vec<Rc<RefCell<Clause>>>,
     pub occurences: usize,
+    pub antecedent: Option<Rc<RefCell<Clause>>>,
+    pub decision_level: i64,
 }
 
 impl Variable {
-    pub fn new(literal: &Literal) -> Variable {
+    pub fn new(name: VariableName) -> Variable {
         Variable {
-            name: literal.0,
+            name: name,
             state: VariableState::Open,
             watched_neg: Vec::new(),
             watched_pos: Vec::new(),
             occurences: 0,
+            antecedent: None,
+            decision_level: -1,
+        }
+    }
+
+    pub fn set(&mut self, to_value: bool) -> Result<Vec<Rc<RefCell<Clause>>>, ()> {
+        match (to_value, self.state) {
+            (true, VariableState::False) => Err(()),
+            (false, VariableState::True) => Err(()),
+            (true, _) => {
+                self.state = VariableState::True;
+                Ok(self.watched_neg.clone())
+            }
+            (false, _) => {
+                self.state = VariableState::False;
+                Ok(self.watched_pos.clone())
+            }
         }
     }
 
