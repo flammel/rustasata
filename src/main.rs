@@ -4,6 +4,7 @@ extern crate fern;
 
 use std::env;
 use std::time::Instant;
+use std::fs;
 
 mod clause;
 mod literal;
@@ -198,15 +199,90 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn test_file_trivial_official_sample() {
+    fn test_file_trivial_1() {
+        let result = run_test_file("test/trivial/coloring_pref_1000_2000.txt");
+        assert_eq!(result, SolverResult::Sat);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_file_trivial_2() {
+        let result = run_test_file("test/trivial/graph4.txt");
+        assert_eq!(result, SolverResult::Sat);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_file_trivial_3() {
+        let result = run_test_file("test/trivial/h_sudoku2.txt");
+        assert_eq!(result, SolverResult::Sat);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_file_trivial_4() {
         let result = run_test_file("test/trivial/officialSample.txt");
         assert_eq!(result, SolverResult::Sat);
     }
 
     #[test]
     #[ignore]
-    fn test_file_easy_queens() {
-        let result = run_test_file("test/easy/19x19queens.txt");
+    fn test_file_trivial_5() {
+        let result = run_test_file("test/trivial/r5.txt");
         assert_eq!(result, SolverResult::Sat);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_file_trivial_6() {
+        let result = run_test_file("test/trivial/random.txt");
+        assert_eq!(result, SolverResult::Sat);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_file_trivial_7() {
+        let result = run_test_file("test/trivial/test10.dimacs");
+        assert_eq!(result, SolverResult::Sat);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_file_easy_1() {
+        let result = run_test_file("test/easy/flat200-89.txt");
+        assert_eq!(result, SolverResult::Sat);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_file_satlib_uf20_91() {
+        let files = fs::read_dir("test/satlib/uf20-91").unwrap();
+        for file in files {
+            let file = file.unwrap().path();
+            let file = file.to_str().unwrap();
+            assert_eq!(run_test_file(file), SolverResult::Sat, "file: {}", file);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_file_satlib_uf125_538() {
+        let files = fs::read_dir("test/satlib/uf125-538").unwrap();
+        for file in files {
+            let file = file.unwrap().path();
+            let file = file.to_str().unwrap();
+            assert_eq!(run_test_file(file), SolverResult::Sat, "file: {}", file);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_file_satlib_uuf125_538() {
+        let files = fs::read_dir("test/satlib/uuf125-538").unwrap();
+        for file in files {
+            let file = file.unwrap().path();
+            let file = file.to_str().unwrap();
+            assert_eq!(run_test_file(file), SolverResult::Unsat, "file: {}", file);
+        }
     }
 }
