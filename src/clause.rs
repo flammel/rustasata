@@ -9,9 +9,7 @@ use self::WatchedUpdate::*;
 pub enum WatchedUpdate {
     NowUnit(Literal),
     NewWatched(Literal),
-    AlreadySat,
-    AlreadyOk,
-    Unsat,
+    NoChange,
 }
 
 #[derive(Eq, PartialEq)]
@@ -45,6 +43,46 @@ impl Clause {
         }
     }
 
+    pub fn watched_literals(&self) -> (Literal, Literal) {
+        (self.literals[self.watched.0], self.literals[self.watched.1])
+    }
+
+    /// ok -> unique
+    /// err -> not unique
+    pub fn unique(&self, alits: &Vec<Literal>) -> Result<Literal, Literal> {
+        let mut result = None;
+        for alit in alits {
+            for literal in self.literals.iter() {
+                if *literal == !*alit {
+                    match result {
+                        None => result = Some(*literal),
+                        Some(rlit) => return Err(rlit),
+                    }
+                }
+            }
+        }
+        if let Some(literal) = result {
+            return Ok(literal);
+        } else {
+            panic!("Clause does not contain any of the given variables");
+        }
+    }
+
+    pub fn resolution(&self, other: &Clause, literal: Literal) -> Clause {
+        let mut literals = Vec::with_capacity(self.literals.len() + other.literals.len());
+        for x in self.literals.iter() {
+            if x.0 != literal.0 {
+                literals.push(x.as_num())
+            }
+        }
+        for x in other.literals.iter() {
+            if x.0 != literal.0 {
+                literals.push(x.as_num())
+            }
+        }
+        Clause::new(&mut literals)
+    }
+
     pub fn update_watched(&mut self, variables: &Variables) -> WatchedUpdate {
         let fst_lit = self.literals[self.watched.0];
 
@@ -57,21 +95,17 @@ impl Clause {
         let snd_val = variables.get(snd_lit).state;
 
         if fst_lit.satisfied_by(fst_val) || snd_lit.satisfied_by(snd_val) {
-            return AlreadySat;
+            return NoChange;
         }
 
         if !fst_lit.falsified_by(fst_val) && !snd_lit.falsified_by(snd_val) {
-            return AlreadyOk;
+            return NoChange;
         }
 
         match self.next_unwatched(variables) {
             None => {
                 if fst_lit.falsified_by(fst_val) {
-                    if snd_lit.falsified_by(snd_val) {
-                        Unsat
-                    } else {
-                        NowUnit(snd_lit)
-                    }
+                    NowUnit(snd_lit)
                 } else {
                     NowUnit(fst_lit)
                 }

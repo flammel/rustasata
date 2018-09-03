@@ -20,7 +20,7 @@ pub struct Variable {
     pub watched_neg: Vec<Rc<RefCell<Clause>>>,
     pub occurences: usize,
     pub antecedent: Option<Rc<RefCell<Clause>>>,
-    pub decision_level: i64,
+    pub decision_level: Option<usize>,
 }
 
 impl Variable {
@@ -32,23 +32,38 @@ impl Variable {
             watched_pos: Vec::new(),
             occurences: 0,
             antecedent: None,
-            decision_level: -1,
+            decision_level: None,
         }
     }
 
-    pub fn set(&mut self, to_value: bool) -> Result<Vec<Rc<RefCell<Clause>>>, ()> {
+    pub fn set(
+        &mut self,
+        to_value: bool,
+        antecedent: Option<Rc<RefCell<Clause>>>,
+        dl: usize,
+    ) -> Option<Vec<Rc<RefCell<Clause>>>> {
         match (to_value, self.state) {
-            (true, VariableState::False) => Err(()),
-            (false, VariableState::True) => Err(()),
+            (true, VariableState::False) => None,
+            (false, VariableState::True) => None,
             (true, _) => {
                 self.state = VariableState::True;
-                Ok(self.watched_neg.clone())
+                self.antecedent = antecedent;
+                self.decision_level = Some(dl);
+                Some(self.watched_neg.clone())
             }
             (false, _) => {
                 self.state = VariableState::False;
-                Ok(self.watched_pos.clone())
+                self.antecedent = antecedent;
+                self.decision_level = Some(dl);
+                Some(self.watched_pos.clone())
             }
         }
+    }
+
+    pub fn unset(&mut self) {
+        self.state = VariableState::Open;
+        self.antecedent = None;
+        self.decision_level = None;
     }
 
     pub fn watch(&mut self, sign: bool, clause: Rc<RefCell<Clause>>) {

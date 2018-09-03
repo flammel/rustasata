@@ -26,16 +26,21 @@ pub enum SolverResult {
 #[derive(Debug, Eq, PartialEq)]
 enum Assignment {
     Decision(Literal),
-    NegatedDecision(Literal),
-    Consequence(Literal),
+    Consequence(Literal, Rc<RefCell<Clause>>),
 }
 
 impl Assignment {
     fn literal(&self) -> Literal {
         match self {
             Decision(literal) => *literal,
-            NegatedDecision(literal) => *literal,
-            Consequence(literal) => *literal,
+            Consequence(literal, _) => *literal,
+        }
+    }
+
+    fn antecedent(&self) -> Option<Rc<RefCell<Clause>>> {
+        match self {
+            Decision(_) => None,
+            Consequence(_, clause) => Some(clause.clone()),
         }
     }
 }
@@ -98,7 +103,7 @@ impl Variables {
 pub struct Solver {
     variables: Variables,
     clauses: Vec<Rc<RefCell<Clause>>>,
-    assignments: Vec<Assignment>,
+    assignments: Vec<Vec<Assignment>>,
     trivially_unsat: bool,
     bcp_queue: VecDeque<(Literal, Rc<RefCell<Clause>>)>,
     stats: SolverStats,
@@ -111,6 +116,7 @@ struct SolverStats {
     literals: u64,
     decisions: u64,
     propagations: u64,
+    learned_clauses: u64,
     init_time: Duration,
     solve_time: Duration,
     misc_time: Duration,
@@ -123,6 +129,7 @@ impl SolverStats {
             literals: 0,
             decisions: 0,
             propagations: 0,
+            learned_clauses: 0,
             init_time: Duration::new(0, 0),
             solve_time: Duration::new(0, 0),
             misc_time: Duration::new(0, 0),
@@ -130,7 +137,8 @@ impl SolverStats {
     }
 }
 
-struct Conflict(Rc<RefCell<Clause>>, Literal);
+#[derive(Debug)]
+struct Conflict(Rc<RefCell<Clause>>);
 
 impl Solver {
     //
@@ -142,7 +150,7 @@ impl Solver {
         let mut solver = Solver {
             variables: Variables::new(),
             clauses: Vec::new(),
-            assignments: vec![],
+            assignments: vec![vec![]],
             trivially_unsat: false,
             bcp_queue: VecDeque::new(),
             stats: SolverStats::new(),
@@ -194,6 +202,7 @@ impl Solver {
     }
 
     fn build_variable_queue(&mut self) {
+        // TODO: remember which polarity occurs more often and try that one first
         self.variable_queue = self
             .variables
             .values()
@@ -223,25 +232,30 @@ impl Solver {
             debug!("Trivially unsat");
             return SolverResult::Unsat;
         }
+
         if self.unit_propagate().is_some() {
             debug!("Unsat by initial bcp");
             return SolverResult::Unsat;
         }
-        debug!("Start loop");
+
         while let Some(var_name) = self.unassigned_var() {
-            self.stats.decisions += 1;
-            self.store_assignment(Decision(Literal(var_name, true)))
-                .expect("Storing new decision lead to conflict");
-            if let Some(Conflict(_c, _l)) = self.unit_propagate() {
-                debug!("BCP caused conflict");
-                if !self.backtrack() {
+            self.make_decision(var_name);
+            while let Some(conflict) = self.unit_propagate() {
+                if let Some(level) = self.analyse_conflict(conflict) {
+                    self.backtrack(level);
+                } else {
                     return SolverResult::Unsat;
                 }
-                self.bcp_queue.clear();
             }
         }
-        debug!("Formula is sat");
+
         SolverResult::Sat
+    }
+
+    fn make_decision(&mut self, var_name: usize) {
+        self.stats.decisions += 1;
+        self.store_assignment(Decision(Literal(var_name, true)))
+            .expect("Storing new decision lead to conflict");
     }
 
     fn unassigned_var(&mut self) -> Option<VariableName> {
@@ -259,37 +273,99 @@ impl Solver {
         while let Some((literal, clause)) = self.bcp_queue.pop_front() {
             trace!("Propagate {:?}", literal);
             self.stats.propagations += 1;
-            if self.store_assignment(Consequence(literal)).is_err() {
-                return Some(Conflict(clause, literal));
+            if self
+                .store_assignment(Consequence(literal, clause.clone()))
+                .is_err()
+            {
+                self.bcp_queue.clear();
+                return Some(Conflict(clause));
             }
         }
         None
     }
 
     //
+    // Conflict Analysis
+    //
+
+    fn analyse_conflict(&mut self, conflict: Conflict) -> Option<usize> {
+        debug!("analyze {:?}", conflict);
+        let mut current_literals = self
+            .assignments
+            .last()
+            .expect("Cannot analyse conflict without decision levels")
+            .iter()
+            .map(|a| a.literal())
+            .collect::<Vec<Literal>>();
+        current_literals.reverse();
+        let mut clause = conflict.0.clone();
+        loop {
+            let uniqueness = clause.borrow().unique(&current_literals);
+            match uniqueness {
+                Err(non_unique) => {
+                    let antecedent = self
+                        .variables
+                        .get(non_unique)
+                        .antecedent
+                        .clone()
+                        .expect("Cannot get antecedent of var for conflict analysis");
+                    let new_clause = clause.borrow().resolution(&antecedent.borrow(), non_unique);
+                    clause = Rc::new(RefCell::new(new_clause));
+                }
+                Ok(unique) => {
+                    let result = self.get_backtrack_level(&clause);
+                    self.add_learned_clause(clause, unique);
+                    return result;
+                }
+            }
+        }
+    }
+
+    fn get_backtrack_level(&self, clause: &Rc<RefCell<Clause>>) -> Option<usize> {
+        let current_dl = Some(self.assignments.len());
+        let literals = &clause.borrow().literals;
+        let mut dl = None;
+        for literal in literals {
+            let vardl = self.variables.get(*literal).decision_level;
+            if vardl == current_dl {
+                continue;
+            }
+            dl = dl.max(vardl);
+        }
+        dl.or_else(|| {
+            if self.assignments.len() > 1 {
+                Some(self.assignments.len() - 1)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn add_learned_clause(&mut self, clause: Rc<RefCell<Clause>>, unique: Literal) {
+        debug!("learning {:?}", clause);
+        let (l1, l2) = clause.borrow().watched_literals();
+        self.variables.get_mut(l1).watch(l1.1, clause.clone());
+        self.variables.get_mut(l2).watch(l2.1, clause.clone());
+        self.stats.learned_clauses += 1;
+        self.bcp_queue.push_back((unique, clause.clone()));
+        self.clauses.push(clause);
+    }
+
+    //
     // Backtracking
     //
 
-    fn backtrack(&mut self) -> bool {
-        debug!("Backtrack");
-        loop {
-            match self.assignments.pop() {
-                None => {
-                    debug!("Cannot backtrack, no assignments");
-                    return false;
-                }
-                Some(Decision(to_negate)) => {
-                    self.unset(to_negate);
-                    self.store_assignment(NegatedDecision(!to_negate))
-                        .expect("Negating decision lead to conflict");
-                    return true;
-                }
-                Some(NegatedDecision(to_unset)) => {
-                    self.unset(to_unset);
-                }
-                Some(Consequence(to_unset)) => {
-                    self.unset(to_unset);
-                }
+    fn backtrack(&mut self, to_level: usize) {
+        debug!(
+            "Backtrack to level {:?} of {:?}",
+            to_level,
+            self.assignments.len()
+        );
+        let to_undo = self.assignments.split_off(to_level);
+        for assignments in to_undo {
+            for assignment in assignments {
+                debug!("unset {:?}", assignment.literal());
+                self.unset(assignment.literal());
             }
         }
     }
@@ -297,7 +373,7 @@ impl Solver {
     fn unset(&mut self, to_unset: Literal) {
         self.variable_queue
             .change_priority_by(&to_unset.0, |prio| VariablePriority(prio.0, false));
-        self.variables.get_mut(to_unset).state = VariableState::Open;
+        self.variables.get_mut(to_unset).unset();
     }
 
     //
@@ -311,23 +387,39 @@ impl Solver {
 
         let updated = {
             let variable = self.variables.get_mut(literal);
-            self.variable_queue
-                .change_priority_by(&literal.0, |prio| VariablePriority(prio.0, true));
-            self.assignments.push(assignment);
-            variable.set(literal.1)
+            let antecedent = assignment.antecedent();
+            let dl = match assignment {
+                Consequence(_, _) => self.assignments.len(),
+                Decision(_) => self.assignments.len() + 1,
+            };
+            variable.set(literal.1, antecedent, dl)
         };
 
         match updated {
-            Ok(clauses_to_update) => {
+            None => Err(()),
+            Some(clauses_to_update) => {
+                self.variable_queue
+                    .change_priority_by(&literal.0, |prio| VariablePriority(prio.0, true));
+                match assignment {
+                    Consequence(_, _) => self
+                        .assignments
+                        .last_mut()
+                        .expect("Cannot store consequence, no decisions")
+                        .push(assignment),
+                    _ => self.assignments.push(vec![assignment]),
+                };
                 for clause in clauses_to_update {
                     let update_result = clause.borrow_mut().update_watched(&self.variables);
                     match update_result {
-                        WatchedUpdate::AlreadySat => {}
-                        WatchedUpdate::AlreadyOk => {}
-                        WatchedUpdate::Unsat => return Err(()),
+                        WatchedUpdate::NoChange => {}
                         WatchedUpdate::NowUnit(unit) => {
                             trace!("literal {:?} is now unit in {:?}", unit, clause.borrow());
-                            self.bcp_queue.push_back((unit, clause.clone()));
+                            // TODO check whether this has a positive or negative performance impact
+                            if unit.falsified_by(self.variables.get(unit).state) {
+                                self.bcp_queue.push_front((unit, clause.clone()));
+                            } else {
+                                self.bcp_queue.push_back((unit, clause.clone()));
+                            }
                         }
                         WatchedUpdate::NewWatched(watched) => {
                             let variable = self.variables.get_mut(watched);
@@ -338,7 +430,6 @@ impl Solver {
                 }
                 Ok(())
             }
-            Err(_) => Err(()),
         }
     }
 }
