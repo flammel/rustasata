@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use std::num::ParseIntError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Dimacs {
     pub clauses: DimacsClauses,
 }

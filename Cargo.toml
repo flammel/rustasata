@@ -3,8 +3,23 @@ name = "rustasata"
 version = "0.1.0"
 authors = ["Florian Lammel <mail@florianlammel.com>"]
 
+[lib]
+name = "rustasata"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rustasata"
+path = "src/bin.rs"
+
 [dependencies]
 log = "0.4"
 fern = "0.5"
 vec_map = "0.8"
 priority-queue = "0.5"
+
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "benchmark"
+harness = false

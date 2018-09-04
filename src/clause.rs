@@ -1,7 +1,7 @@
 use std::fmt;
 
 use literal::Literal;
-use solver::Variables;
+use variable::Variables;
 
 use self::WatchedUpdate::*;
 
@@ -51,7 +51,7 @@ impl Clause {
     /// err -> not unique
     pub fn unique(&self, alits: &Vec<Literal>) -> Result<Literal, Literal> {
         let mut result = None;
-        for alit in alits {
+        for alit in alits.iter().rev() {
             for literal in self.literals.iter() {
                 if *literal == !*alit {
                     match result {
