@@ -20,7 +20,7 @@ fn main() {
     let to_parse = start.elapsed();
 
     let start = Instant::now();
-    let mut solver = Solver::from_dimacs(dimacs);
+    let mut solver = Solver::from_dimacs(&dimacs);
     let to_init = start.elapsed();
 
     let start = Instant::now();

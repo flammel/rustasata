@@ -6,4 +6,3 @@ mod decision_provider;
 mod literal;
 pub mod parser;
 pub mod solver;
-mod variable;

@@ -23,13 +23,13 @@ fn setup_logger() -> Result<(), fern::InitError> {
 fn run_test(str: &str) -> SolverResult {
     let _ = setup_logger();
     let dimacs = parse(str).unwrap();
-    Solver::from_dimacs(dimacs).solve()
+    Solver::from_dimacs(&dimacs).solve()
 }
 
 fn run_test_file(str: &str) -> SolverResult {
     let _ = setup_logger();
     let dimacs = parse_file(str).unwrap();
-    Solver::from_dimacs(dimacs).solve()
+    Solver::from_dimacs(&dimacs).solve()
 }
 
 #[test]
@@ -236,6 +236,7 @@ fn test_file_satlib_uuf125_538() {
     for file in files {
         let file = file.unwrap().path();
         let file = file.to_str().unwrap();
+        println!("file {:?}", file);
         assert_eq!(run_test_file(file), SolverResult::Unsat, "file: {}", file);
     }
 }

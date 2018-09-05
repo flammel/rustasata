@@ -1,135 +1,111 @@
-use std::fmt;
+extern crate vec_map;
+
+use self::vec_map::VecMap;
 
 use literal::Literal;
-use variable::Variables;
 
 use self::WatchedUpdate::*;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum WatchedUpdate {
     NowUnit(Literal),
     NewWatched(Literal),
     NoChange,
 }
 
-#[derive(Eq, PartialEq)]
-pub struct Clause {
-    pub watched: (usize, usize),
-    pub literals: Vec<Literal>,
-}
-
-impl fmt::Debug for Clause {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Clause({} {}, {:?})",
-            self.watched.0,
-            self.watched.1,
-            self.literals
-                .iter()
-                .map(|l| l.as_num())
-                .collect::<Vec<i64>>()
-        )
-    }
-}
+#[derive(Eq, PartialEq, Debug)]
+pub struct Clause(Vec<Literal>);
 
 impl Clause {
-    pub fn new(literals: &mut Vec<i64>) -> Clause {
+    pub fn new(mut literals: Vec<i64>) -> Clause {
         literals.sort_unstable();
         literals.dedup();
-        Clause {
-            watched: (0, if literals.len() > 1 { 1 } else { 0 }),
-            literals: literals.iter().map(Literal::new).collect(),
-        }
+        Clause(literals.iter().map(Literal::new).collect())
+    }
+
+    pub fn from_literals(mut literals: Vec<Literal>) -> Clause {
+        literals.sort_unstable();
+        literals.dedup();
+        Clause(literals)
     }
 
     pub fn watched_literals(&self) -> (Literal, Literal) {
-        (self.literals[self.watched.0], self.literals[self.watched.1])
-    }
-
-    /// ok -> unique
-    /// err -> not unique
-    pub fn unique(&self, alits: &Vec<Literal>) -> Result<Literal, Literal> {
-        let mut result = None;
-        for alit in alits.iter().rev() {
-            for literal in self.literals.iter() {
-                if *literal == !*alit {
-                    match result {
-                        None => result = Some(*literal),
-                        Some(rlit) => return Err(rlit),
-                    }
-                }
-            }
-        }
-        if let Some(literal) = result {
-            return Ok(literal);
+        if self.0.len() == 1 {
+            (self.0[0], self.0[0])
         } else {
-            panic!("Clause does not contain any of the given variables");
+            (self.0[0], self.0[1])
         }
     }
 
-    pub fn resolution(&self, other: &Clause, literal: Literal) -> Clause {
-        let mut literals = Vec::with_capacity(self.literals.len() + other.literals.len());
-        for x in self.literals.iter() {
-            if x.0 != literal.0 {
-                literals.push(x.as_num())
-            }
-        }
-        for x in other.literals.iter() {
-            if x.0 != literal.0 {
-                literals.push(x.as_num())
-            }
-        }
-        Clause::new(&mut literals)
+    pub fn literals(&self) -> &Vec<Literal> {
+        &self.0
     }
 
-    pub fn update_watched(&mut self, variables: &Variables) -> WatchedUpdate {
-        let fst_lit = self.literals[self.watched.0];
-
-        if self.watched.0 == self.watched.1 {
-            return NowUnit(fst_lit);
+    pub fn propagate(&mut self, literal: &Literal, assigns: &VecMap<bool>) -> WatchedUpdate {
+        if !*literal == self.0[0] {
+            self.check(0, 1, &assigns)
+        } else {
+            self.check(1, 0, &assigns)
         }
+    }
 
-        let snd_lit = self.literals[self.watched.1];
-        let fst_val = variables.get(fst_lit).state;
-        let snd_val = variables.get(snd_lit).state;
+    fn check(&mut self, idx: usize, other_idx: usize, assigns: &VecMap<bool>) -> WatchedUpdate {
+        let lit = self.0[idx];
+        let val = assigns.get(lit.var());
 
-        if fst_lit.satisfied_by(fst_val) || snd_lit.satisfied_by(snd_val) {
+        if lit.satisfied_by(val) {
             return NoChange;
         }
 
-        if !fst_lit.falsified_by(fst_val) && !snd_lit.falsified_by(snd_val) {
-            return NoChange;
-        }
+        // Skipping the first two literals, return the index of the first literal that is not falsified under the current assignment.
+        let swap_with = self
+            .0
+            .iter()
+            .enumerate()
+            .skip(2)
+            .find(|(_, literal)| !literal.falsified_by(assigns.get(literal.var())))
+            .map(|(idx, _)| idx);
 
-        match self.next_unwatched(variables) {
-            None => {
-                if fst_lit.falsified_by(fst_val) {
-                    NowUnit(snd_lit)
-                } else {
-                    NowUnit(fst_lit)
-                }
-            }
-            Some((idx, lit)) => {
-                if fst_lit.falsified_by(fst_val) {
-                    self.watched.0 = idx
-                } else {
-                    self.watched.1 = idx
-                }
-                NewWatched(lit)
+        match swap_with {
+            None => NowUnit(self.0[other_idx]),
+            Some(swap_idx) => {
+                self.0.swap(idx, swap_idx);
+                NewWatched(self.0[idx])
             }
         }
     }
+}
 
-    fn next_unwatched(&self, variables: &Variables) -> Option<(usize, Literal)> {
-        for (idx, literal) in self.literals.iter().enumerate() {
-            if self.watched.0 == idx || self.watched.1 == idx {
-                continue;
-            }
-            if !literal.falsified_by(variables.get(*literal).state) {
-                return Some((idx, *literal));
-            }
-        }
-        None
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watched_literals_returns_unit() {
+        let literals = vec![-78634];
+        let clause = Clause::new(literals);
+        assert_eq!(Literal(-78634), clause.watched_literals().0);
+        assert_eq!(Literal(-78634), clause.watched_literals().1);
+    }
+
+    #[test]
+    fn watched_literals_returns_first_two() {
+        let literals = vec![-1, 3, 7];
+        let clause = Clause::new(literals);
+        assert_eq!(Literal(-1), clause.watched_literals().0);
+        assert_eq!(Literal(3), clause.watched_literals().1);
+    }
+
+    #[test]
+    fn propagate_swaps_literals_and_returns_new_watched() {
+        let literals = vec![-4, -2, 1, 3];
+        let mut clause = Clause::new(literals);
+        let assigns = VecMap::new();
+        let result = clause.propagate(&Literal(2), &assigns);
+        assert_eq!(
+            vec![Literal(-4), Literal(1), Literal(-2), Literal(3)],
+            clause.0
+        );
+        assert_eq!(NewWatched(Literal(1)), result);
     }
 }
